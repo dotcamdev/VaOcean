@@ -62,6 +62,11 @@ public:
 	{
 		return IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5);
 	}
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		// Useful when adding a permutation of a particular shader
+		return true;
+	}
 
 	FUpdateSpectrumCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -196,6 +201,11 @@ public:
 	{
 		return IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5);
 	}
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		// Useful when adding a permutation of a particular shader
+		return true;
+	}
 
 	FRadix008A_CS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -307,6 +317,11 @@ public:
 	{
 		return true;
 	}
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		// Useful when adding a permutation of a particular shader
+		return true;
+	}
 
 	FQuadVS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -353,6 +368,11 @@ public:
 	static bool ShouldCache(EShaderPlatform Platform)
 	{
 		return IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5);
+	}
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		// Useful when adding a permutation of a particular shader
+		return true;
 	}
 
 	FUpdateDisplacementPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
@@ -462,6 +482,11 @@ public:
 	static bool ShouldCache(EShaderPlatform Platform)
 	{
 		return IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5);
+	}
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		// Useful when adding a permutation of a particular shader
+		return true;
 	}
 
 	FGenGradientFoldingPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
