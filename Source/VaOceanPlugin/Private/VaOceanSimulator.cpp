@@ -1,6 +1,10 @@
 // Copyright 2014-2016 Vladimir Alyamkin. All Rights Reserved.
 
 #include "VaOceanPluginPrivatePCH.h"
+#include "Public/RHIStaticStates.h"
+#include "Public/PipelineStateCache.h"
+#include "Public/RHIDefinitions.h"
+#include "Public/RHIResources.h"
 
 #define HALF_SQRT_2	0.7071068f
 #define GRAV_ACCEL	981.0f	// The acceleration of gravity, cm/s^2
@@ -30,9 +34,9 @@ float Gauss()
 }
 
 /**
- * Phillips Spectrum
- * K: normalized wave vector, W: wind direction, v: wind velocity, a: amplitude constant
- */
+* Phillips Spectrum
+* K: normalized wave vector, W: wind direction, v: wind velocity, a: amplitude constant
+*/
 float Phillips(FVector2D K, FVector2D W, float v, float a, float dir_depend)
 {
 	// Largest possible wave from constant wind of velocity v
@@ -71,9 +75,9 @@ AVaOceanSimulator::AVaOceanSimulator(const FObjectInitializer& ObjectInitializer
 
 	// Vertex to draw on render targets
 	m_pQuadVB[0].Set(-1.0f, -1.0f, 0.0f, 1.0f);
-	m_pQuadVB[1].Set(-1.0f,  1.0f, 0.0f, 1.0f);
-	m_pQuadVB[2].Set( 1.0f, -1.0f, 0.0f, 1.0f);
-	m_pQuadVB[3].Set( 1.0f,  1.0f, 0.0f, 1.0f);
+	m_pQuadVB[1].Set(-1.0f, 1.0f, 0.0f, 1.0f);
+	m_pQuadVB[2].Set(1.0f, -1.0f, 0.0f, 1.0f);
+	m_pQuadVB[3].Set(1.0f, 1.0f, 0.0f, 1.0f);
 }
 
 void AVaOceanSimulator::InitializeInternalData()
@@ -127,7 +131,7 @@ void AVaOceanSimulator::InitializeInternalData()
 	CreateBufferAndUAV(&zero_data, 3 * output_size * float2_stride, float2_stride, &m_pBuffer_Float_Dxyz, &m_pUAV_Dxyz, &m_pSRV_Dxyz);
 
 	// FFT
-	RadixCreatePlan(&FFTPlan, 3); 
+	RadixCreatePlan(&FFTPlan, 3);
 
 	// Turn the flag on
 	bSimulatorInitializated = true;
@@ -280,28 +284,28 @@ void AVaOceanSimulator::UpdateDisplacementMap(float WorldTime)
 		FUpdateSpectrumCSPerFrame, PerFrameParams, UpdateSpectrumCSPerFrameParams,
 		{
 			FUpdateSpectrumUniformParameters Parameters;
-			const auto FeatureLevel = GMaxRHIFeatureLevel;
-			Parameters.Time = PerFrameParams.g_Time;
+	const auto FeatureLevel = GMaxRHIFeatureLevel;
+	Parameters.Time = PerFrameParams.g_Time;
 
-			FUpdateSpectrumUniformBufferRef UniformBuffer = 
-				FUpdateSpectrumUniformBufferRef::CreateUniformBufferImmediate(Parameters, UniformBuffer_SingleFrame);
+	FUpdateSpectrumUniformBufferRef UniformBuffer =
+		FUpdateSpectrumUniformBufferRef::CreateUniformBufferImmediate(Parameters, UniformBuffer_SingleFrame);
 
-			TShaderMapRef<FUpdateSpectrumCS> UpdateSpectrumCS(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-			RHICmdList.SetComputeShader(UpdateSpectrumCS->GetComputeShader());
+	TShaderMapRef<FUpdateSpectrumCS> UpdateSpectrumCS(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	RHICmdList.SetComputeShader(UpdateSpectrumCS->GetComputeShader());
 
-			UpdateSpectrumCS->SetParameters(RHICmdList, ImmutableParams.g_ActualDim,
-				ImmutableParams.g_InWidth, ImmutableParams.g_OutWidth, ImmutableParams.g_OutHeight,
-				ImmutableParams.g_DtxAddressOffset, ImmutableParams.g_DtyAddressOffset);
+	UpdateSpectrumCS->SetParameters(RHICmdList, ImmutableParams.g_ActualDim,
+		ImmutableParams.g_InWidth, ImmutableParams.g_OutWidth, ImmutableParams.g_OutHeight,
+		ImmutableParams.g_DtxAddressOffset, ImmutableParams.g_DtyAddressOffset);
 
-			UpdateSpectrumCS->SetParameters(RHICmdList, UniformBuffer, PerFrameParams.m_pSRV_H0, PerFrameParams.m_pSRV_Omega);
-			UpdateSpectrumCS->SetOutput(RHICmdList, PerFrameParams.m_pUAV_Ht);
+	UpdateSpectrumCS->SetParameters(RHICmdList, UniformBuffer, PerFrameParams.m_pSRV_H0, PerFrameParams.m_pSRV_Omega);
+	UpdateSpectrumCS->SetOutput(RHICmdList, PerFrameParams.m_pUAV_Ht);
 
-			uint32 group_count_x = (ImmutableParams.g_ActualDim + BLOCK_SIZE_X - 1) / BLOCK_SIZE_X;
-			uint32 group_count_y = (ImmutableParams.g_ActualDim + BLOCK_SIZE_Y - 1) / BLOCK_SIZE_Y;
-			RHICmdList.DispatchComputeShader(group_count_x, group_count_y, 1);
+	uint32 group_count_x = (ImmutableParams.g_ActualDim + BLOCK_SIZE_X - 1) / BLOCK_SIZE_X;
+	uint32 group_count_y = (ImmutableParams.g_ActualDim + BLOCK_SIZE_Y - 1) / BLOCK_SIZE_Y;
+	RHICmdList.DispatchComputeShader(group_count_x, group_count_y, 1);
 
-			UpdateSpectrumCS->UnsetParameters(RHICmdList);
-			UpdateSpectrumCS->UnbindBuffers(RHICmdList);
+	UpdateSpectrumCS->UnsetParameters(RHICmdList);
+	UpdateSpectrumCS->UnbindBuffers(RHICmdList);
 		});
 
 	// ------------------------------------ Perform FFT -------------------------------------------
@@ -331,34 +335,50 @@ void AVaOceanSimulator::UpdateDisplacementMap(float WorldTime)
 		FUpdateDisplacementPSPerFrame, PerFrameParams, UpdateDisplacementPSPerFrameParams,
 		{
 			const auto FeatureLevel = GMaxRHIFeatureLevel;
-			FUpdateDisplacementUniformParameters Parameters;
-			Parameters.ChoppyScale = PerFrameParams.g_ChoppyScale;
-			Parameters.GridLen = PerFrameParams.g_GridLen;
+	FUpdateDisplacementUniformParameters Parameters;
+	Parameters.ChoppyScale = PerFrameParams.g_ChoppyScale;
+	Parameters.GridLen = PerFrameParams.g_GridLen;
 
-			FUpdateDisplacementUniformBufferRef UniformBuffer =
-				FUpdateDisplacementUniformBufferRef::CreateUniformBufferImmediate(Parameters, UniformBuffer_SingleFrame);
+	FUpdateDisplacementUniformBufferRef UniformBuffer =
+		FUpdateDisplacementUniformBufferRef::CreateUniformBufferImmediate(Parameters, UniformBuffer_SingleFrame);
 
-			SetRenderTarget(RHICmdList, TextureRenderTarget->GetRenderTargetTexture(), NULL);
-			RHICmdList.Clear(true, FLinearColor::Transparent, false, 0.f, false, 0, FIntRect());
-			
-			// Be sure we're blending right without any alpha influence on Color blending
-			RHICmdList.SetBlendState(TStaticBlendState<>::GetRHI());
+	//SetRenderTarget(RHICmdList, TextureRenderTarget->GetRenderTargetTexture(), NULL);
+	//RHICmdList.Clear(true, FLinearColor::Transparent, false, 0.f, false, 0, FIntRect());
+	FRHIRenderTargetView ColorView(TextureRenderTarget->GetRenderTargetTexture(), 0, -1, ERenderTargetLoadAction::EClear, ERenderTargetStoreAction::EStore);
+	FRHIDepthRenderTargetView DepthView(NULL, ERenderTargetLoadAction::ENoAction, ERenderTargetStoreAction::ENoAction, FExclusiveDepthStencil::DepthRead_StencilWrite);
+	FRHISetRenderTargetsInfo RenderTargetsInfo(1, &ColorView, DepthView);
+	RHICmdList.SetRenderTargetsAndClear(RenderTargetsInfo);
 
-			TShaderMapRef<FQuadVS> QuadVS(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-			TShaderMapRef<FUpdateDisplacementPS> UpdateDisplacementPS(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	TShaderMapRef<FQuadVS> QuadVS(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	TShaderMapRef<FUpdateDisplacementPS> UpdateDisplacementPS(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 
-			static FGlobalBoundShaderState UpdateDisplacementBoundShaderState;
-			SetGlobalBoundShaderState(RHICmdList, GMaxRHIFeatureLevel, UpdateDisplacementBoundShaderState, GQuadVertexDeclaration.VertexDeclarationRHI, *QuadVS, *UpdateDisplacementPS);
+	// Be sure we're blending right without any alpha influence on Color blending
+	//RHICmdList.SetBlendState(TStaticBlendState<>::GetRHI());
+	FGraphicsPipelineStateInitializer GraphicsPSOInit;
+	RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+	GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
+	GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
+	GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState</*false, CF_Always*/>::GetRHI();
+	GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
+	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GQuadVertexDeclaration.VertexDeclarationRHI;
+	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*QuadVS);
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*UpdateDisplacementPS);
+	SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
-			UpdateDisplacementPS->SetParameters(RHICmdList, ImmutableParams.g_ActualDim,
-				ImmutableParams.g_InWidth, ImmutableParams.g_OutWidth, ImmutableParams.g_OutHeight,
-				ImmutableParams.g_DtxAddressOffset, ImmutableParams.g_DtyAddressOffset);
 
-			UpdateDisplacementPS->SetParameters(RHICmdList, UniformBuffer, PerFrameParams.g_InputDxyz);
 
-			DrawPrimitiveUP(RHICmdList, PT_TriangleStrip, 2, PerFrameParams.m_pQuadVB, sizeof(PerFrameParams.m_pQuadVB[0]));
+	//static FGlobalBoundShaderState UpdateDisplacementBoundShaderState;
+	//SetGlobalBoundShaderState(RHICmdList, GMaxRHIFeatureLevel, UpdateDisplacementBoundShaderState, GQuadVertexDeclaration.VertexDeclarationRHI, *QuadVS, *UpdateDisplacementPS);
 
-			UpdateDisplacementPS->UnsetParameters(RHICmdList);
+	UpdateDisplacementPS->SetParameters(RHICmdList, ImmutableParams.g_ActualDim,
+		ImmutableParams.g_InWidth, ImmutableParams.g_OutWidth, ImmutableParams.g_OutHeight,
+		ImmutableParams.g_DtxAddressOffset, ImmutableParams.g_DtyAddressOffset);
+
+	UpdateDisplacementPS->SetParameters(RHICmdList, UniformBuffer, PerFrameParams.g_InputDxyz);
+
+	DrawPrimitiveUP(RHICmdList, PT_TriangleStrip, 2, PerFrameParams.m_pQuadVB, sizeof(PerFrameParams.m_pQuadVB[0]));
+
+	UpdateDisplacementPS->UnsetParameters(RHICmdList);
 		});
 
 	// ----------------------------------- Generate Normal ----------------------------------------
@@ -377,38 +397,59 @@ void AVaOceanSimulator::UpdateDisplacementMap(float WorldTime)
 		FTextureRenderTargetResource*, DisplacementRenderTarget, DisplacementRenderTarget,
 		{
 			FUpdateDisplacementUniformParameters Parameters;
-			const auto FeatureLevel = GMaxRHIFeatureLevel;
-			Parameters.ChoppyScale = PerFrameParams.g_ChoppyScale;
-			Parameters.GridLen = PerFrameParams.g_GridLen;
+	const auto FeatureLevel = GMaxRHIFeatureLevel;
+	Parameters.ChoppyScale = PerFrameParams.g_ChoppyScale;
+	Parameters.GridLen = PerFrameParams.g_GridLen;
 
-			FUpdateDisplacementUniformBufferRef UniformBuffer = FUpdateDisplacementUniformBufferRef::CreateUniformBufferImmediate(Parameters, UniformBuffer_SingleFrame);
+	FUpdateDisplacementUniformBufferRef UniformBuffer = FUpdateDisplacementUniformBufferRef::CreateUniformBufferImmediate(Parameters, UniformBuffer_SingleFrame);
 
-			SetRenderTarget(RHICmdList, TextureRenderTarget->GetRenderTargetTexture(), FTextureRHIRef());
-			RHICmdList.Clear(true, FLinearColor::Transparent, false, 0.f, false, 0, FIntRect());
+	//SetRenderTarget(RHICmdList, TextureRenderTarget->GetRenderTargetTexture(), FTextureRHIRef());
+	//RHICmdList.Clear(true, FLinearColor::Transparent, false, 0.f, false, 0, FIntRect());
 
-			// Be sure we're blending right without any alpha influence on Color blending
-			RHICmdList.SetBlendState(TStaticBlendState<>::GetRHI());
 
-			TShaderMapRef<FQuadVS> QuadVS(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-			TShaderMapRef<FGenGradientFoldingPS> GenGradientFoldingPS(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 
-			static FGlobalBoundShaderState UpdateDisplacementBoundShaderState;
-			SetGlobalBoundShaderState(RHICmdList, GMaxRHIFeatureLevel, UpdateDisplacementBoundShaderState, GQuadVertexDeclaration.VertexDeclarationRHI, *QuadVS, *GenGradientFoldingPS);
-
-			GenGradientFoldingPS->SetParameters(RHICmdList, ImmutableParams.g_ActualDim,
-				ImmutableParams.g_InWidth, ImmutableParams.g_OutWidth, ImmutableParams.g_OutHeight,
-				ImmutableParams.g_DtxAddressOffset, ImmutableParams.g_DtyAddressOffset);
-
-			GenGradientFoldingPS->SetParameters(RHICmdList, UniformBuffer, DisplacementRenderTarget->TextureRHI);
-
-			DrawPrimitiveUP(RHICmdList, PT_TriangleStrip, 2, PerFrameParams.m_pQuadVB, sizeof(PerFrameParams.m_pQuadVB[0]));
-
-			GenGradientFoldingPS->UnsetParameters(RHICmdList);
-
-			// Generate new mipmaps now
-			RHICmdList.GenerateMips(TextureRenderTarget->TextureRHI);
-	});
+	FRHIRenderTargetView ColorView(TextureRenderTarget->GetRenderTargetTexture(), 0, -1, ERenderTargetLoadAction::EClear, ERenderTargetStoreAction::EStore);
+	FRHIDepthRenderTargetView DepthView(FTextureRHIRef(), ERenderTargetLoadAction::ENoAction, ERenderTargetStoreAction::ENoAction, FExclusiveDepthStencil::DepthRead_StencilWrite);
 	
+	FRHISetRenderTargetsInfo RenderTargetsInfo(1, &ColorView, DepthView);
+	RHICmdList.SetRenderTargetsAndClear(RenderTargetsInfo);
+
+
+	TShaderMapRef<FQuadVS> QuadVS(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	TShaderMapRef<FGenGradientFoldingPS> GenGradientFoldingPS(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+
+	// Be sure we're blending right without any alpha influence on Color blending
+	//RHICmdList.SetBlendState(TStaticBlendState<>::GetRHI());
+	FGraphicsPipelineStateInitializer GraphicsPSOInit;
+	RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+	GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
+	GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
+	GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState</*false, CF_Always*/>::GetRHI();
+	GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
+	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GQuadVertexDeclaration.VertexDeclarationRHI;
+	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*QuadVS);
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*GenGradientFoldingPS);
+	SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+
+
+
+	//static FGlobalBoundShaderState UpdateDisplacementBoundShaderState;
+	//SetGlobalBoundShaderState(RHICmdList, GMaxRHIFeatureLevel, UpdateDisplacementBoundShaderState, GQuadVertexDeclaration.VertexDeclarationRHI, *QuadVS, *GenGradientFoldingPS);
+
+	GenGradientFoldingPS->SetParameters(RHICmdList, ImmutableParams.g_ActualDim,
+		ImmutableParams.g_InWidth, ImmutableParams.g_OutWidth, ImmutableParams.g_OutHeight,
+		ImmutableParams.g_DtxAddressOffset, ImmutableParams.g_DtyAddressOffset);
+
+	GenGradientFoldingPS->SetParameters(RHICmdList, UniformBuffer, DisplacementRenderTarget->TextureRHI);
+
+	DrawPrimitiveUP(RHICmdList, PT_TriangleStrip, 2, PerFrameParams.m_pQuadVB, sizeof(PerFrameParams.m_pQuadVB[0]));
+
+	GenGradientFoldingPS->UnsetParameters(RHICmdList);
+
+	// Generate new mipmaps now
+	RHICmdList.GenerateMips(TextureRenderTarget->TextureRHI);
+		});
+
 }
 
 //////////////////////////////////////////////////////////////////////////
