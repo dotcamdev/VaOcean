@@ -4,7 +4,7 @@ namespace UnrealBuildTool.Rules
 {
 	public class VaOceanPlugin : ModuleRules
 	{
-        public VaOceanPlugin(TargetInfo Target)
+        public VaOceanPlugin(ReadOnlyTargetRules Target) : base(Target)
 		{
 			PublicIncludePaths.AddRange(
 				new string[] { 
@@ -14,7 +14,7 @@ namespace UnrealBuildTool.Rules
 
 			PrivateIncludePaths.AddRange(
 				new string[] {
-					"VaOceanPlugin/Private",
+					"VaOceanPlugin/Private"
                     // ... add other private include paths required here ...
 				}
 				);
